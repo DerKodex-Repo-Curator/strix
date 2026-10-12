@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from agents import RunContextWrapper, function_tool
+from caido_sdk_client import BaseError
 
 from strix.runtime.caido_handle import CaidoBootstrapHandle
 from strix.tools.nullish import clean_optional
@@ -124,9 +125,9 @@ def _no_client() -> str:
 
 
 def _err(name: str, exc: Exception) -> str:
-    # The Caido SDK wraps its GraphQL timeout in an error with an empty message.
-    if isinstance(exc.__cause__, TimeoutError):
-        logger.warning("%s timed out", name)
+    # Caido-side failures (timeouts, bad filters, ...) are returned to the model, not our bugs.
+    if isinstance(exc, BaseError):
+        logger.warning("%s failed", name, exc_info=True)
     else:
         logger.exception("%s failed", name)
     return json.dumps(

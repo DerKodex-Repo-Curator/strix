@@ -124,7 +124,11 @@ def _no_client() -> str:
 
 
 def _err(name: str, exc: Exception) -> str:
-    logger.exception("%s failed", name)
+    # The Caido SDK wraps its GraphQL timeout in an error with an empty message.
+    if isinstance(exc.__cause__, TimeoutError):
+        logger.warning("%s timed out", name)
+    else:
+        logger.exception("%s failed", name)
     return json.dumps(
         {"success": False, "error": f"{name} failed: {exc}"},
         ensure_ascii=False,

@@ -252,3 +252,15 @@ async def test_existing_request_ids_queries_current_project(
 
     assert existing == {"1042"}
     assert looked_up == ["1042", "1088"]
+
+
+def test_err_logs_caido_timeout_as_warning(caplog: pytest.LogCaptureFixture) -> None:
+    exc = RuntimeError()
+    exc.__cause__ = TimeoutError()
+
+    with caplog.at_level("WARNING", logger="strix.tools.proxy.tools"):
+        tools._err("list_requests", exc)
+
+    [record] = caplog.records
+    assert record.levelname == "WARNING"
+    assert record.exc_info is None

@@ -190,6 +190,21 @@ async def test_run_cycle_does_not_retry_permanent_error(
         (400, "'Image URLs in user messages' functionality not supported.", True),
         (
             400,
+            "litellm.BadRequestError: OpenrouterException - "
+            '{"error":{"message":"Provider returned error","code":400,"metadata":{"raw":'
+            '"{\\"code\\":\\"invalid_image\\",\\"error\\":\\"code: \'Client specified an '
+            "invalid argument', message: Downloaded response does not contain a valid JPG, "
+            'PNG, WebP, or ICO image.\\"}","provider_name":"xAI"}}}',
+            True,
+        ),
+        (
+            400,
+            "Unsupported content-type encountered when downloading image. The only "
+            "supported content types are [image/jpeg, image/png, image/webp].",
+            True,
+        ),
+        (
+            400,
             "OpenRouterException: Message: This model's maximum context length is 1048576 "
             "tokens, but the request requires 1073484 tokens (942412 input including "
             "image/vision expansion + 131072 for the completion). Reduce the input length "

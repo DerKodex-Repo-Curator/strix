@@ -67,7 +67,9 @@ _IMAGE_REJECTION = re.compile(
     r"|does not support image input"  # LiteLLM's Fireworks check
     r"|doesn't support the image field"  # Bedrock Converse
     r"|unknown variant `image_url`"  # DeepSeek, e.g. via Vercel AI Gateway
-    r"|'[^']*image[^']*' functionality not supported",  # Vercel AI Gateway (AI SDK), unverified
+    r"|'[^']*image[^']*' functionality not supported"  # Vercel AI Gateway (AI SDK), unverified
+    r"|does not contain a valid JPG, PNG, WebP, or ICO image"  # xAI: URL fetched, not an image
+    r"|unsupported content-type encountered when downloading image",  # xAI
     re.IGNORECASE,
 )
 _MAX_COMPACTIONS_PER_CYCLE = 2

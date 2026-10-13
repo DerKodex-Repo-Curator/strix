@@ -19,6 +19,7 @@ from strix.config import load_settings
 from strix.runtime.backends import backend_supports_bind_mounts, get_backend
 from strix.runtime.caido_bootstrap import bootstrap_caido
 from strix.runtime.caido_handle import CaidoBootstrapHandle
+from strix.runtime.deferred_session import DeferredSandboxClient, DeferredSandboxSession
 
 
 if TYPE_CHECKING:
@@ -262,6 +263,7 @@ async def create_or_reuse(
     local_sources: list[dict[str, Any]],
     extra_files: list[dict[str, Any]] | None = None,
     status_sink: StatusSink | None = None,
+    defer: bool = False,
 ) -> dict[str, Any]:
     """Return the existing session bundle for ``scan_id`` or create a new one.
 
@@ -323,41 +325,61 @@ async def create_or_reuse(
         backend_name,
         image,
     )
-    report("Starting sandbox container")
-    client, session = await backend(
-        image=image,
-        manifest=manifest,
-        exposed_ports=(_CONTAINER_CAIDO_PORT,),
-        bind_mounts=bind_mounts,
-    )
 
-    if extra_file_archive is not None:
-        report("Placing workspace files")
-        try:
-            await stage_extra_files(session, extra_file_archive)
-        except BaseException:
-            await _discard_session(client, session)
-            raise
-
-    report("Setting up the proxy")
-    caido_endpoint = await session.resolve_exposed_port(_CONTAINER_CAIDO_PORT)
-    scheme = "https" if caido_endpoint.tls else "http"
-    host_caido_url = f"{scheme}://{caido_endpoint.host}:{caido_endpoint.port}"
-    logger.debug("Caido host endpoint resolved: %s", host_caido_url)
-
-    # The Caido login + project setup polls the guest for a couple of seconds
-    # and nothing needs the client before the first proxy tool call, so it
-    # runs concurrently with the rest of scan start; consumers resolve the
-    # handle at first use (see CaidoBootstrapHandle).
-    caido_client = CaidoBootstrapHandle(
-        asyncio.create_task(
-            bootstrap_caido(
-                session,
-                host_url=host_caido_url,
-                container_url=container_caido_url,
-            ),
-            name=f"caido-bootstrap-{scan_id}",
+    async def _bring_up() -> tuple[Any, Any]:
+        report("Starting sandbox container")
+        client, session = await backend(
+            image=image,
+            manifest=manifest,
+            exposed_ports=(_CONTAINER_CAIDO_PORT,),
+            bind_mounts=bind_mounts,
         )
+        if extra_file_archive is not None:
+            report("Placing workspace files")
+            try:
+                await stage_extra_files(session, extra_file_archive)
+            except BaseException:
+                await _discard_session(client, session)
+                raise
+        return client, session
+
+    async def _caido(session: Any) -> Any:
+        report("Setting up the proxy")
+        caido_endpoint = await session.resolve_exposed_port(_CONTAINER_CAIDO_PORT)
+        scheme = "https" if caido_endpoint.tls else "http"
+        host_caido_url = f"{scheme}://{caido_endpoint.host}:{caido_endpoint.port}"
+        logger.debug("Caido host endpoint resolved: %s", host_caido_url)
+        return await bootstrap_caido(
+            session,
+            host_url=host_caido_url,
+            container_url=container_caido_url,
+        )
+
+    if defer:
+        bring_up = asyncio.create_task(_bring_up(), name=f"sandbox-bring-up-{scan_id}")
+        deferred = DeferredSandboxSession(
+            bring_up,
+            manifest=manifest,
+            exposed_ports=(_CONTAINER_CAIDO_PORT,),
+        )
+
+        async def _caido_when_up() -> Any:
+            return await _caido(await deferred.resolve())
+
+        bundle = {
+            "client": DeferredSandboxClient(deferred),
+            "session": deferred,
+            "caido_client": CaidoBootstrapHandle(
+                asyncio.create_task(_caido_when_up(), name=f"caido-bootstrap-{scan_id}")
+            ),
+        }
+        _SESSION_CACHE[scan_id] = bundle
+        logger.info("Sandbox session for scan %s deferred and cached", scan_id)
+        return bundle
+
+    client, session = await _bring_up()
+    caido_client = CaidoBootstrapHandle(
+        asyncio.create_task(_caido(session), name=f"caido-bootstrap-{scan_id}")
     )
 
     bundle = {

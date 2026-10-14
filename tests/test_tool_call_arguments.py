@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
 
 TRUNCATED = '{"n": 1'
+OVER_NESTED = '{"a":' + "[" * 100_000
 
 
 def _tool_call_completion(arguments: str) -> dict[str, Any]:
@@ -229,6 +230,13 @@ def test_repair_arguments_wraps_non_standard_json_constants(arguments: str) -> N
     assert _loads_strict(repaired) == {MALFORMED_ARGUMENTS_KEY: arguments}
 
 
+def test_repair_arguments_wraps_over_nested_json() -> None:
+    repaired = repair_arguments(OVER_NESTED)
+
+    assert repaired is not None
+    assert _loads_strict(repaired) == {MALFORMED_ARGUMENTS_KEY: OVER_NESTED}
+
+
 def test_history_repair_rewrites_only_malformed_calls() -> None:
     items = [
         {"role": "user", "content": "go"},
@@ -259,8 +267,25 @@ def test_repair_input_returns_same_object_when_nothing_changes() -> None:
     assert repair_input("plain prompt") == "plain prompt"
 
 
+def test_repair_input_wraps_over_nested_function_call_arguments() -> None:
+    items = [
+        {
+            "type": "function_call",
+            "call_id": "a",
+            "name": "x",
+            "arguments": OVER_NESTED,
+        }
+    ]
+
+    repaired = repair_input(items)
+
+    assert isinstance(repaired, list)
+    assert _loads_strict(repaired[0]["arguments"]) == {MALFORMED_ARGUMENTS_KEY: OVER_NESTED}
+
+
 @pytest.mark.parametrize(
-    "arguments", ['{"cmd": "ls -la', "[1, 2]", "null", "not json", '{"n": NaN}']
+    "arguments",
+    ['{"cmd": "ls -la', "[1, 2]", "null", "not json", '{"n": NaN}', OVER_NESTED],
 )
 def test_describe_malformed_arguments_tells_the_model_to_reissue(arguments: str) -> None:
     message = describe_malformed_arguments("exec_command", arguments)

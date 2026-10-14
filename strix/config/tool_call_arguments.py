@@ -27,7 +27,10 @@ def _reject_constant(name: str) -> Any:
 
 
 def _loads_strict(text: str) -> Any:
-    return json.loads(text, parse_constant=_reject_constant)
+    try:
+        return json.loads(text, parse_constant=_reject_constant)
+    except RecursionError as exc:
+        raise ValueError("arguments are nested too deeply to parse") from exc
 
 
 def describe_malformed_arguments(tool_name: str, arguments: str) -> str | None:

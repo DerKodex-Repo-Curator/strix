@@ -57,6 +57,7 @@ _NULLABLE_ARRAY = {
     "tags": {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
 }
 _OBJECT = {"modifications": {"type": "object"}}
+OVER_NESTED = '{"a":' + "[" * 100_000
 
 
 @pytest.mark.asyncio
@@ -150,7 +151,7 @@ async def test_unknown_and_null_arguments_are_untouched() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("arguments", ["not json", '{"n": NaN}'])
+@pytest.mark.parametrize("arguments", ["not json", '{"n": NaN}', OVER_NESTED])
 async def test_non_object_payloads_are_reported_instead_of_invoked(arguments: str) -> None:
     captured: dict[str, str] = {}
     wrapped = factory._with_coerced_arguments(_capturing_tool(captured, _ARRAY))

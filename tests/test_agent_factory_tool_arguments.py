@@ -150,11 +150,12 @@ async def test_unknown_and_null_arguments_are_untouched() -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_object_payloads_are_reported_instead_of_invoked() -> None:
+@pytest.mark.parametrize("arguments", ["not json", '{"n": NaN}'])
+async def test_non_object_payloads_are_reported_instead_of_invoked(arguments: str) -> None:
     captured: dict[str, str] = {}
     wrapped = factory._with_coerced_arguments(_capturing_tool(captured, _ARRAY))
 
-    result = await wrapped.on_invoke_tool(cast("Any", None), "not json")
+    result = await wrapped.on_invoke_tool(cast("Any", None), arguments)
 
     assert result.startswith("probe: the tool call was not executed")
     assert "raw_input" not in captured

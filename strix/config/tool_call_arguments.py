@@ -22,6 +22,14 @@ from openai.types.responses import ResponseFunctionToolCall
 MALFORMED_ARGUMENTS_KEY = "malformed_arguments"
 
 
+def _reject_constant(name: str) -> Any:
+    raise ValueError(f"non-standard JSON constant {name}")
+
+
+def _loads_strict(text: str) -> Any:
+    return json.loads(text, parse_constant=_reject_constant)
+
+
 def describe_malformed_arguments(tool_name: str, arguments: str) -> str | None:
     """Return a model-facing recovery message if ``arguments`` is not a JSON object.
 
@@ -33,7 +41,7 @@ def describe_malformed_arguments(tool_name: str, arguments: str) -> str | None:
     if not arguments.strip():
         return None
     try:
-        parsed = json.loads(arguments)
+        parsed = _loads_strict(arguments)
     except ValueError as exc:
         detail = str(exc)
     else:
@@ -52,7 +60,7 @@ def repair_arguments(arguments: object) -> str | None:
     if not isinstance(arguments, str) or not arguments.strip():
         return "{}"
     try:
-        parsed = json.loads(arguments)
+        parsed = _loads_strict(arguments)
     except ValueError:
         parsed = None
     if isinstance(parsed, dict):

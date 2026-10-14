@@ -25,6 +25,7 @@ from openai.types.responses import ResponseFunctionToolCall
 from strix.config.models import _NonStreamingModel, _TurnGuardModel
 from strix.config.tool_call_arguments import (
     MALFORMED_ARGUMENTS_KEY,
+    _loads_strict,
     describe_malformed_arguments,
     repair_arguments,
     repair_history_arguments,
@@ -213,9 +214,19 @@ def test_repair_arguments_rewrites_anything_but_a_json_object(
     assert repair_arguments(arguments) == expected
 
 
-@pytest.mark.parametrize("arguments", ["{}", '{"cmd": "ls -la"}', '{"nested": {"a": [1]}}'])
+@pytest.mark.parametrize(
+    "arguments", ["{}", '{"cmd": "ls -la"}', '{"nested": {"a": [1]}}', '{"n": "NaN"}']
+)
 def test_repair_arguments_leaves_json_objects_alone(arguments: str) -> None:
     assert repair_arguments(arguments) is None
+
+
+@pytest.mark.parametrize("arguments", ['{"n": NaN}', '{"n": Infinity}', '{"n": -Infinity}'])
+def test_repair_arguments_wraps_non_standard_json_constants(arguments: str) -> None:
+    repaired = repair_arguments(arguments)
+
+    assert repaired is not None
+    assert _loads_strict(repaired) == {MALFORMED_ARGUMENTS_KEY: arguments}
 
 
 def test_history_repair_rewrites_only_malformed_calls() -> None:
@@ -237,6 +248,7 @@ def test_history_repair_rewrites_only_malformed_calls() -> None:
     assert rebuilt[3] is items[3]
     assert isinstance(rebuilt[4], ResponseFunctionToolCall)
     assert rebuilt[4].arguments == "{}"
+    assert isinstance(items[1], dict)
     assert items[1]["arguments"] == '{"cmd": "ls'
 
 
@@ -247,7 +259,9 @@ def test_repair_input_returns_same_object_when_nothing_changes() -> None:
     assert repair_input("plain prompt") == "plain prompt"
 
 
-@pytest.mark.parametrize("arguments", ['{"cmd": "ls -la', "[1, 2]", "null", "not json"])
+@pytest.mark.parametrize(
+    "arguments", ['{"cmd": "ls -la', "[1, 2]", "null", "not json", '{"n": NaN}']
+)
 def test_describe_malformed_arguments_tells_the_model_to_reissue(arguments: str) -> None:
     message = describe_malformed_arguments("exec_command", arguments)
 

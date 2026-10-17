@@ -458,6 +458,7 @@ _RUNNING_NON_TTY_NOTICE = (
 )
 
 _PROCESS_RUNNING_RE = re.compile(r"^Process running with session ID \d+$", re.MULTILINE)
+_OUTPUT_HEADER_RE = re.compile(r"^Output:\n", re.MULTILINE)
 
 
 def _annotate_running_non_tty(parsed: dict[str, Any], result: Any) -> Any:
@@ -473,7 +474,10 @@ def _annotate_running_non_tty(parsed: dict[str, Any], result: Any) -> Any:
             f"Note: yield_time_ms={int(requested)} was capped at {PTY_YIELD_TIME_MS_MAX} "
             f"({_EXEC_YIELD_CAP_S} s). " + notice.removeprefix("Note: ")
         )
-    return f"{result[: match.end()]}\n{notice}{result[match.end() :]}"
+    header = _OUTPUT_HEADER_RE.search(result, match.end())
+    if header is None:
+        return f"{result}\n{notice}"
+    return f"{result[: header.end()]}{notice}\n{result[header.end() :]}"
 
 
 def _wrap_exec_command(tool: FunctionTool) -> FunctionTool:

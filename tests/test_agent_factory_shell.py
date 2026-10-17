@@ -115,10 +115,10 @@ async def test_wrap_exec_command_flags_a_running_non_tty_process() -> None:
 
     assert result == (
         "Chunk ID: abc123\nWall time: 30.0012 seconds\n"
-        "Process running with session ID 7\n"
+        "Process running with session ID 7\nOutput:\n"
         "Note: yield_time_ms=90000 was capped at 30000 (30 s). this non-TTY process cannot be "
         "polled and its later output is lost. Rerun it in the background "
-        "(`cmd > /tmp/out.log 2>&1 &`, then read the log) or with tty=true.\nOutput:\n"
+        "(`cmd > /tmp/out.log 2>&1 &`, then read the log) or with tty=true.\n"
     )
 
 

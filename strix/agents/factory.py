@@ -13,6 +13,7 @@ from agents.agent import ToolsToFinalOutputResult
 from agents.sandbox import SandboxAgent
 from agents.sandbox.capabilities import Filesystem, Shell
 from agents.sandbox.errors import InvalidManifestPathError
+from agents.sandbox.session.pty_types import PTY_YIELD_TIME_MS_MAX
 from agents.tool import CustomTool, FunctionTool, Tool
 from pydantic import ValidationError
 
@@ -441,8 +442,43 @@ def _apply_shell_output_cap(parsed: dict[str, Any]) -> None:
     )
 
 
+_EXEC_YIELD_CAP_S = PTY_YIELD_TIME_MS_MAX // 1000
+
+_EXEC_COMMAND_DESCRIPTION_NOTE = (
+    f"The wait for output is capped at {_EXEC_YIELD_CAP_S} s whatever yield_time_ms says. "
+    "A non-TTY command still running at the yield cannot be read later (write_stdin fails "
+    "on it and its output is lost): run anything longer in the background with its output "
+    "redirected to a file (`cmd > /tmp/out.log 2>&1 &`, then read the log), or start it with "
+    'tty=true and poll with write_stdin(session_id=<id>, chars="").'
+)
+
+_RUNNING_NON_TTY_NOTICE = (
+    "Note: this non-TTY process cannot be polled and its later output is lost. Rerun it in "
+    "the background (`cmd > /tmp/out.log 2>&1 &`, then read the log) or with tty=true."
+)
+
+_PROCESS_RUNNING_RE = re.compile(r"^Process running with session ID \d+$", re.MULTILINE)
+
+
+def _annotate_running_non_tty(parsed: dict[str, Any], result: Any) -> Any:
+    if parsed.get("tty") or not isinstance(result, str):
+        return result
+    match = _PROCESS_RUNNING_RE.search(result)
+    if match is None:
+        return result
+    notice = _RUNNING_NON_TTY_NOTICE
+    requested = parsed.get("yield_time_ms")
+    if isinstance(requested, int | float) and requested > PTY_YIELD_TIME_MS_MAX:
+        notice = (
+            f"Note: yield_time_ms={int(requested)} was capped at {PTY_YIELD_TIME_MS_MAX} "
+            f"({_EXEC_YIELD_CAP_S} s). " + notice.removeprefix("Note: ")
+        )
+    return f"{result[: match.end()]}\n{notice}{result[match.end() :]}"
+
+
 def _wrap_exec_command(tool: FunctionTool) -> FunctionTool:
     invoke_tool = tool.on_invoke_tool
+    tool.description = f"{tool.description.rstrip()} {_EXEC_COMMAND_DESCRIPTION_NOTE}"
 
     async def invoke(ctx: Any, raw_input: str) -> Any:
         try:
@@ -455,7 +491,7 @@ def _wrap_exec_command(tool: FunctionTool) -> FunctionTool:
             _apply_shell_output_cap(parsed)
             raw_input = json.dumps(parsed)
         try:
-            return await invoke_tool(ctx, raw_input)
+            result = await invoke_tool(ctx, raw_input)
         except ValidationError as exc:
             return _format_validation_error(tool.name, exc)
         except InvalidManifestPathError as exc:
@@ -465,6 +501,9 @@ def _wrap_exec_command(tool: FunctionTool) -> FunctionTool:
                 "(or omitted to use the turn's cwd). "
                 f"Got: {rel!r}."
             )
+        if isinstance(parsed, dict):
+            return _annotate_running_non_tty(parsed, result)
+        return result
 
     tool.on_invoke_tool = invoke
     return tool

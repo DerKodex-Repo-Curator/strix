@@ -86,6 +86,7 @@ def render_system_prompt(
     system_prompt_context: dict[str, Any] | None = None,
     include_scope: bool = True,
     supports_images: bool = True,
+    report_tool: str = "create_vulnerability_report",
 ) -> str:
     """Render the system prompt. Returns empty string on template failure.
 
@@ -125,15 +126,19 @@ def render_system_prompt(
 
         # Skills every agent of this kind loads come first, so siblings share them
         # as a cached prefix; the ones the caller asked for vary and go after.
-        rendered = env.get_template("system_prompt.jinja").render(
-            shared_skill_names=[name for name in skill_content if name in shared],
-            requested_skill_names=[name for name in skill_content if name not in shared],
-            available_skills=get_available_skills(),
-            interactive=interactive,
-            is_root=is_root,
-            system_prompt_context=system_prompt_context or {},
-            include_scope=include_scope,
-            **skill_content,
+        rendered = (
+            env.get_template("system_prompt.jinja")
+            .render(
+                shared_skill_names=[name for name in skill_content if name in shared],
+                requested_skill_names=[name for name in skill_content if name not in shared],
+                available_skills=get_available_skills(),
+                interactive=interactive,
+                is_root=is_root,
+                system_prompt_context=system_prompt_context or {},
+                include_scope=include_scope,
+                **skill_content,
+            )
+            .replace("create_vulnerability_report", report_tool)
         )
     except Exception:
         logger.exception("render_system_prompt failed; returning empty prompt")

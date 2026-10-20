@@ -31,11 +31,15 @@ def _tool(name: str) -> FunctionTool:
 @pytest.fixture(autouse=True)
 def _reset_registry() -> object:
     saved = list(factory._EXTRA_TOOLS)
+    saved_removed = set(factory._REMOVED_TOOL_NAMES)
     factory._EXTRA_TOOLS.clear()
+    factory._REMOVED_TOOL_NAMES.clear()
     try:
         yield
     finally:
         factory._EXTRA_TOOLS[:] = saved
+        factory._REMOVED_TOOL_NAMES.clear()
+        factory._REMOVED_TOOL_NAMES.update(saved_removed)
 
 
 def test_register_agent_tools_is_deduped() -> None:
@@ -91,6 +95,15 @@ def test_per_call_extra_tools_reject_duplicate_registered_names() -> None:
 
     with pytest.raises(ValueError, match="same_name"):
         factory.build_strix_agent(is_root=True, extra_tools=[_tool("same_name")])
+
+
+def test_removed_tools_are_left_out_of_root_and_child() -> None:
+    factory.remove_agent_tools("create_vulnerability_report")
+
+    for is_root in (True, False):
+        names = [t.name for t in factory.build_strix_agent(is_root=is_root).tools]
+        assert "create_vulnerability_report" not in names
+        assert "create_dependency_report" in names
 
 
 def test_instructions_override_is_used_verbatim() -> None:

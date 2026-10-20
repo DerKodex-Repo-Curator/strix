@@ -670,6 +670,7 @@ _BASE_TOOLS: tuple[Tool, ...] = (
 # ``strix.runtime.backends.register_backend``: register before the first
 # ``build_strix_agent`` call and every agent (root + children) gets them.
 _EXTRA_TOOLS: list[Tool] = []
+_REMOVED_TOOL_NAMES: set[str] = set()
 
 
 def _ensure_unique_tool_names(tools: Sequence[Tool]) -> None:
@@ -701,6 +702,11 @@ def register_agent_tools(*tools: Tool) -> None:
     for tool in new_tools:
         _EXTRA_TOOLS.append(tool)
         logger.info("Registered extra agent tool: %s", getattr(tool, "name", tool))
+
+
+def remove_agent_tools(*names: str) -> None:
+    """Leave these base tools out of every scan agent built afterwards."""
+    _REMOVED_TOOL_NAMES.update(names)
 
 
 def registered_agent_tools() -> tuple[Tool, ...]:
@@ -760,6 +766,7 @@ def build_strix_agent(
         tools: list[Tool] = [*_BASE_TOOLS, *agent_tools, finish_tool]
     else:
         tools = [*_BASE_TOOLS, *agent_tools, agent_finish]
+    tools = [tool for tool in tools if tool.name not in _REMOVED_TOOL_NAMES]
     _ensure_unique_tool_names(tools)
     tools = [
         _with_bounded_result(_with_strictness(_with_coerced_arguments(tool), strict_tool_schemas))
